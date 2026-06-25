@@ -25,7 +25,7 @@ POSE_CONF = 0.40
 # Test-time augmentation improves accuracy but ~3x slows inference, so we enable
 # it for single images only and keep video real-time-ish.
 USE_TTA_IMAGE = True
-USE_TTA_VIDEO = False
+USE_TTA_VIDEO = True
 
 # CLAHE preprocessing helps in low-light / dusty / smoky frames.
 USE_ENHANCEMENT = True

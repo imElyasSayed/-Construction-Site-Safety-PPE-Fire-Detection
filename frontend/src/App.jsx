@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import ModelPerformance from './ModelPerformance'
 
 const STATUS_TEXT = { present: 'Detected', violation: 'Missing', absent: 'Not observed' }
 const LEVELS = {
@@ -311,6 +312,8 @@ export default function App() {
             </div>
           </aside>
         </div>
+
+        <ModelPerformance />
       </div>
     </div>
   )

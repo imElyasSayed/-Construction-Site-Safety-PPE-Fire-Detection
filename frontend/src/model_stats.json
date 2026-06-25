@@ -1,0 +1,26 @@
+{
+  "firesmoke": {
+    "title": "Fire / Smoke",
+    "status": "final",
+    "fair": false,
+    "old": { "label": "Baseline (yolov8m)" },
+    "new": { "label": "Fine-tuned (merged data)" },
+    "footnote": "Baseline mAP50 measured on the original validation set; fine-tuned on the merged cubeai + sayedgamal99 set — different yardsticks, so this is a provisional comparison. Run the same-val-set eval (notebook cell 5) for the airtight numbers. Baseline only has mAP50 recorded (others n/a).",
+    "rows": [
+      { "name": "Overall", "metrics": { "mAP50": [0.763, 0.820], "mAP50-95": [null, 0.499], "Precision": [null, 0.846], "Recall": [null, 0.768] } },
+      { "name": "Fire",    "metrics": { "mAP50": [0.859, 0.839], "mAP50-95": [null, 0.510], "Precision": [null, 0.863], "Recall": [null, 0.775] } },
+      { "name": "Smoke",   "metrics": { "mAP50": [0.667, 0.801], "mAP50-95": [null, 0.488], "Precision": [null, 0.830], "Recall": [null, 0.761] } }
+    ]
+  },
+  "ppe": {
+    "title": "PPE",
+    "status": "pending",
+    "fair": true,
+    "old": { "label": "Baseline (yolov8s, 20ep)" },
+    "new": { "label": "Fine-tuned (yolov8m)" },
+    "footnote": "Fine-tuned numbers pending — retrain in progress. Both models evaluate on the same Roboflow v4 validation set, so once the new numbers land this is a direct, valid comparison. Baseline values are overall-only and approximate.",
+    "rows": [
+      { "name": "Overall", "metrics": { "mAP50": [0.750, null], "mAP50-95": [0.500, null], "Precision": [0.800, null], "Recall": [0.760, null] } }
+    ]
+  }
+}

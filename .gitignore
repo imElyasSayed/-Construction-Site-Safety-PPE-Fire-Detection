@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node / frontend build deps (frontend/dist is committed so the app runs without a build)
+frontend/node_modules/
+
+# Models auto-downloaded at runtime / produced by training
+yolov8s-pose.pt
+runs/
+
+# Contains a hardcoded API key — keep it local so the secret isn't pushed.
+# (Remove this line if you rotate the key and want the notebook tracked.)
+training/colab_train.ipynb
+training/kaggle_train.ipynb
+
+# Generated annotated results (keep the sample committed ones if you like;
+# uncomment to ignore all generated outputs)
+# outputs/detected_*

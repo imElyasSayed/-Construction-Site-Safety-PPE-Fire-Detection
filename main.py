@@ -1,85 +1,75 @@
-from fastapi import FastAPI, UploadFile, File
-import shutil
+"""Construction Safety Monitor — FastAPI app.
+
+A single upload runs every capability (PPE detection + tracking, fire/smoke detection +
+segmentation/severity, pose-based fall detection) and returns one combined annotated
+output plus a unified safety summary. The vanilla web frontend is served from /.
+"""
+
 import os
+import shutil
+from urllib.parse import quote
 
-from services.ppe_detector import detect_ppe, detect_ppe_video
+import cv2
+from fastapi import FastAPI, UploadFile, File
+from fastapi.staticfiles import StaticFiles
 
-app = FastAPI()
+from services import pipeline
+from services.config import UPLOAD_FOLDER, OUTPUT_FOLDER
 
-UPLOAD_FOLDER = "uploads"
+app = FastAPI(title="Construction Safety Monitor")
+
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
 
-def generate_alert(detections):
-    alert_messages = []
-
-    for detection in detections:
-        label = detection["label"]
-
-        if label == "NO-Hardhat":
-            alert_messages.append("Worker without hardhat detected")
-
-        elif label == "NO-Safety Vest":
-            alert_messages.append("Worker without safety vest detected")
-
-        elif label == "NO-Mask":
-            alert_messages.append("Worker without mask detected")
-
-        elif label == "NO-Gloves":
-            alert_messages.append("Worker without gloves detected")
-
-        elif label == "NO-Goggles":
-            alert_messages.append("Worker without goggles detected")
-
-        elif label == "Fall-Detected":
-            alert_messages.append("Fall hazard detected")
-
-    if alert_messages:
-        return list(set(alert_messages))
-
-    return ["No safety issue detected"]
-
-
-@app.get("/")
-def home():
-    return {"message": "Construction Safety Monitor Backend"}
+def _output_url(path):
+    """Map a local outputs/ path to its served URL."""
+    return f"/outputs/{quote(os.path.basename(path))}"
 
 
 @app.post("/detect/image")
 async def detect_image(file: UploadFile = File(...)):
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    ppe_results, output_image_path = detect_ppe(file_path)
-    alerts = generate_alert(ppe_results)
+    frame = cv2.imread(file_path)
+    if frame is None:
+        return {"error": "Could not read image file", "filename": file.filename}
 
-    return {
+    result, annotated = pipeline.analyze_image(frame)
+    output_path = os.path.join(OUTPUT_FOLDER, f"detected_{file.filename}")
+    cv2.imwrite(output_path, annotated)
+
+    result.update({
+        "type": "image",
         "filename": file.filename,
-        "saved_path": file_path,
-        "output_image": output_image_path,
-        "ppe_detections": ppe_results,
-        "alerts": alerts
-    }
+        "output_image": _output_url(output_path),
+    })
+    return result
 
 
 @app.post("/detect/video")
 async def detect_video(file: UploadFile = File(...)):
     file_path = os.path.join(UPLOAD_FOLDER, file.filename)
-
     with open(file_path, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    video_detections, output_video_path = detect_ppe_video(file_path)
-    alerts = generate_alert(video_detections)
+    result, output_path, keyframe_path = pipeline.analyze_video(file_path)
 
-    return {
+    result.update({
+        "type": "video",
         "filename": file.filename,
-        "saved_path": file_path,
-        "output_video": output_video_path,
-        "total_detections": len(video_detections),
-        "ppe_detections": video_detections[:50],
-        "alerts": alerts,
-        "note": "Showing first 50 detections only"
-    }
+        "output_video": _output_url(output_path),
+        "keyframe": _output_url(keyframe_path) if keyframe_path else None,
+    })
+    return result
+
+
+# Serve generated results and uploads, then the built React frontend at the root.
+# The "/" mount is registered last so the API routes above take precedence.
+# Run `npm install && npm run build` in frontend/ to (re)generate frontend/dist.
+FRONTEND_DIR = "frontend/dist" if os.path.isdir("frontend/dist") else "frontend"
+app.mount("/outputs", StaticFiles(directory=OUTPUT_FOLDER), name="outputs")
+app.mount("/uploads", StaticFiles(directory=UPLOAD_FOLDER), name="uploads")
+app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

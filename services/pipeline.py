@@ -136,6 +136,45 @@ def analyze_image(frame):
     return result, annotated
 
 
+def analyze_live_frame(frame):
+    ppe = ppe_detector.detect_live(frame)
+    firesmoke = firesmoke_detector.detect_live(frame)
+
+    h, w = frame.shape[:2]
+    total = max(1.0, float(h * w))
+    fire_area = 0.0
+    smoke_area = 0.0
+    for det in firesmoke:
+        x1, y1, x2, y2 = det["box"]
+        area = max(0, x2 - x1) * max(0, y2 - y1)
+        if det["class"] == "fire":
+            fire_area += area
+        elif det["class"] == "smoke":
+            smoke_area += area
+    seg = {
+        "fire_severity": round(min(100.0, fire_area / total * 100), 1),
+        "smoke_severity": round(min(100.0, smoke_area / total * 100), 1),
+    }
+
+    fall = any(d["label"] == FALL_LABEL for d in ppe)
+    alert_info = alerts.generate_alerts(ppe, firesmoke, fall, seg)
+
+    return {
+        "ppe_detections": ppe,
+        "ppe_summary": alerts.ppe_compliance(d["label"] for d in ppe),
+        "firesmoke_detections": firesmoke,
+        "persons_detected": 0,
+        "fall_detected": fall,
+        "pose_available": False,
+        "severity": {
+            "fire": seg["fire_severity"],
+            "smoke": seg["smoke_severity"],
+        },
+        "alerts": alert_info["alerts"],
+        "level": alert_info["level"],
+    }
+
+
 # ----------------------------------------------------------------------------- video
 def _open_writer(path, fps, size):
     for codec in ("avc1", "mp4v"):

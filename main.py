@@ -10,6 +10,7 @@ import shutil
 from urllib.parse import quote
 
 import cv2
+import numpy as np
 from fastapi import FastAPI, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 
@@ -45,6 +46,24 @@ async def detect_image(file: UploadFile = File(...)):
         "type": "image",
         "filename": file.filename,
         "output_image": _output_url(output_path),
+    })
+    return result
+
+
+@app.post("/detect/live-frame")
+async def detect_live_frame(file: UploadFile = File(...)):
+    data = await file.read()
+    arr = np.frombuffer(data, dtype=np.uint8)
+    frame = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    if frame is None:
+        return {"error": "Could not read camera frame"}
+
+    result = pipeline.analyze_live_frame(frame)
+    result.update({
+        "type": "live",
+        "filename": "camera-frame.jpg",
+        "frame_width": frame.shape[1],
+        "frame_height": frame.shape[0],
     })
     return result
 

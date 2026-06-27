@@ -35,6 +35,13 @@ USE_ENHANCEMENT = True
 VIDEO_STRIDE = 3
 VIDEO_MAX_WIDTH = 1280
 
+# Live camera prioritizes responsiveness over maximum accuracy. Uploaded evidence still
+# uses the full-resolution/full-capability pipeline above.
+LIVE_MAX_WIDTH = 416
+LIVE_PPE_IMGSZ = 416
+LIVE_FIRESMOKE_IMGSZ = 416
+LIVE_CONF_BOOST = 0.05
+
 # --- Folders -------------------------------------------------------------------
 UPLOAD_FOLDER = "uploads"
 OUTPUT_FOLDER = "outputs"

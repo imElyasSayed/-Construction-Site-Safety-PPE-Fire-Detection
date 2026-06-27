@@ -16,6 +16,8 @@ from services.config import (
     PPE_CONF,
     PPE_IOU,
     USE_TTA_IMAGE,
+    LIVE_CONF_BOOST,
+    LIVE_PPE_IMGSZ,
 )
 
 model = YOLO(PPE_MODEL_PATH)
@@ -43,6 +45,19 @@ def _parse(results, with_id=False):
 def detect(frame, conf=PPE_CONF, iou=PPE_IOU, augment=USE_TTA_IMAGE):
     """Run PPE detection on a single BGR frame."""
     results = model.predict(frame, conf=conf, iou=iou, augment=augment, verbose=False)
+    return _parse(results)
+
+
+def detect_live(frame):
+    """Run low-latency PPE detection for webcam frames."""
+    results = model.predict(
+        frame,
+        conf=min(0.95, PPE_CONF + LIVE_CONF_BOOST),
+        iou=PPE_IOU,
+        imgsz=LIVE_PPE_IMGSZ,
+        augment=False,
+        verbose=False,
+    )
     return _parse(results)
 
 

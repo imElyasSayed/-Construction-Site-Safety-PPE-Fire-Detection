@@ -32,16 +32,38 @@ export default function App() {
   const [hoveredZone, setHoveredZone] = useState(null)
   const [revealKey, setRevealKey] = useState(0)
   const [clock, setClock] = useState(fmtClock())
+  const [liveActive, setLiveActive] = useState(false)
+  const [liveProcessing, setLiveProcessing] = useState(false)
+  const [liveError, setLiveError] = useState(null)
   const fileRef = useRef(null)
+  const videoRef = useRef(null)
+  const canvasRef = useRef(null)
+  const overlayRef = useRef(null)
+  const streamRef = useRef(null)
+  const liveTimerRef = useRef(null)
+  const liveBusyRef = useRef(false)
 
   useEffect(() => {
     const t = setInterval(() => setClock(fmtClock()), 1000)
     return () => clearInterval(t)
   }, [])
 
+  useEffect(() => {
+    return () => stopLiveDetection()
+  }, [])
+
+  useEffect(() => {
+    const onResize = () => {
+      if (result?.type === 'live') drawLiveOverlay(result)
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [result])
+
   // --- file intake ---
   const applyFile = (f) => {
     if (!f) return
+    if (liveActive) stopLiveDetection()
     setPreviewUrl((prev) => { if (prev) URL.revokeObjectURL(prev); return URL.createObjectURL(f) })
     setFile(f)
     setIsVideo((f.type || '').startsWith('video'))
@@ -55,8 +77,148 @@ export default function App() {
   const onDropKey = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); pickFile() } }
 
   // --- analysis ---
+  const drawLiveOverlay = (data) => {
+    const canvas = overlayRef.current
+    const video = videoRef.current
+    if (!canvas || !video || !data?.frame_width || !data?.frame_height) return
+
+    const rect = video.getBoundingClientRect()
+    canvas.width = Math.round(rect.width)
+    canvas.height = Math.round(rect.height)
+    const ctx = canvas.getContext('2d')
+    ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+    const scale = Math.max(canvas.width / data.frame_width, canvas.height / data.frame_height)
+    const dx = (canvas.width - data.frame_width * scale) / 2
+    const dy = (canvas.height - data.frame_height * scale) / 2
+    const mapBox = ([x1, y1, x2, y2]) => [
+      dx + x1 * scale,
+      dy + y1 * scale,
+      (x2 - x1) * scale,
+      (y2 - y1) * scale,
+    ]
+
+    const drawBox = (box, text, color) => {
+      const [x, y, w, h] = mapBox(box)
+      ctx.strokeStyle = color
+      ctx.lineWidth = 3
+      ctx.strokeRect(x, y, w, h)
+      ctx.font = '600 13px Inter, system-ui, sans-serif'
+      const label = text.length > 32 ? text.slice(0, 29) + '...' : text
+      const tw = ctx.measureText(label).width + 12
+      const ty = Math.max(6, y - 24)
+      ctx.fillStyle = 'rgba(13,15,18,.88)'
+      ctx.fillRect(x, ty, tw, 20)
+      ctx.fillStyle = color
+      ctx.fillText(label, x + 6, ty + 14)
+    }
+
+    ;(data.ppe_detections || []).forEach((det) => {
+      const label = det.label || ''
+      const danger = label.startsWith('NO-') || label === 'FALL'
+      drawBox(det.box, `${label} ${(det.confidence || 0).toFixed(2)}`, danger ? '#E5342B' : '#2FBF71')
+    })
+    ;(data.firesmoke_detections || []).forEach((det) => {
+      const color = det.class === 'fire' ? '#E5342B' : '#c3ccd6'
+      drawBox(det.box, `${det.class} ${(det.confidence || 0).toFixed(2)}`, color)
+    })
+
+    const level = data.level || 'ok'
+    const bannerColor = level === 'critical' ? '#E5342B' : level === 'warning' ? '#F2C200' : '#2FBF71'
+    const bannerText = (data.alerts && data.alerts[0]) || 'No safety issue detected'
+    ctx.fillStyle = bannerColor
+    ctx.fillRect(0, 0, canvas.width, 32)
+    ctx.fillStyle = level === 'warning' ? '#14171C' : '#ffffff'
+    ctx.font = '700 14px Inter, system-ui, sans-serif'
+    ctx.fillText(bannerText, 10, 21)
+  }
+
+  const captureLiveFrame = async () => {
+    if (liveBusyRef.current || !videoRef.current || !canvasRef.current) return
+    const video = videoRef.current
+    if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) return
+
+    liveBusyRef.current = true
+    setLiveProcessing(true)
+    setLiveError(null)
+    try {
+      const canvas = canvasRef.current
+      const maxWidth = 416
+      const scale = Math.min(1, maxWidth / video.videoWidth)
+      canvas.width = Math.round(video.videoWidth * scale)
+      canvas.height = Math.round(video.videoHeight * scale)
+      const ctx = canvas.getContext('2d')
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.55))
+      if (!blob) throw new Error('Could not capture camera frame')
+
+      const fd = new FormData()
+      fd.append('file', blob, 'camera-frame.jpg')
+      const res = await fetch('/detect/live-frame', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error('HTTP ' + res.status)
+      const data = await res.json()
+      if (data.error) throw new Error(data.error)
+      setResult(data)
+      drawLiveOverlay(data)
+    } catch (err) {
+      setLiveError('Live detection failed: ' + err.message)
+    } finally {
+      liveBusyRef.current = false
+      setLiveProcessing(false)
+    }
+  }
+
+  const startLiveDetection = async () => {
+    if (liveActive) return
+    setLiveError(null)
+    setNotice(null)
+    clearFile()
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      })
+      streamRef.current = stream
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream
+        await videoRef.current.play()
+      }
+      setLiveActive(true)
+      setResult(null)
+      setRevealKey((k) => k + 1)
+      if (overlayRef.current) {
+        const ctx = overlayRef.current.getContext('2d')
+        ctx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height)
+      }
+      setTimeout(captureLiveFrame, 350)
+      liveTimerRef.current = setInterval(captureLiveFrame, 450)
+    } catch (err) {
+      setLiveError('Camera unavailable: ' + err.message)
+    }
+  }
+
+  const stopLiveDetection = () => {
+    if (liveTimerRef.current) {
+      clearInterval(liveTimerRef.current)
+      liveTimerRef.current = null
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+    }
+    if (videoRef.current) videoRef.current.srcObject = null
+    if (overlayRef.current) {
+      const ctx = overlayRef.current.getContext('2d')
+      ctx.clearRect(0, 0, overlayRef.current.width, overlayRef.current.height)
+    }
+    liveBusyRef.current = false
+    setLiveActive(false)
+    setLiveProcessing(false)
+  }
+
   const runAnalysis = async () => {
     if (!file || processing) return
+    if (liveActive) stopLiveDetection()
     const endpoint = isVideo ? '/detect/video' : '/detect/image'
     setProcessing(true); setNotice(null)
     try {
@@ -78,6 +240,7 @@ export default function App() {
   // --- derived values ---
   const d = result || {}
   const isVid = d.type === 'video'
+  const isLive = d.type === 'live'
   const summary = d.ppe_summary && d.ppe_summary.length ? d.ppe_summary : EMPTY_PPE
   const statusMap = {}
   summary.forEach((p) => { statusMap[p.zone] = p.status })
@@ -122,7 +285,7 @@ export default function App() {
     if (d.video_playable && d.output_video) { outputUrl = d.output_video; outputIsVideo = true }
     else if (d.keyframe) { outputUrl = d.keyframe }
     else if (previewUrl) { outputUrl = previewUrl; outputIsVideo = true }
-  } else if (d.output_image) {
+  } else if (!isLive && d.output_image) {
     outputUrl = d.output_image
   } else if (previewUrl && !isVideo) {
     outputUrl = previewUrl
@@ -183,6 +346,30 @@ export default function App() {
                   {processing ? (<><span className="spin" /> Analyzing</>) : (file ? 'Run analysis' : 'Select a file')}
                 </button>
                 {file && <button className="btn btn-ghost" onClick={clearFile}>Clear</button>}
+              </div>
+              <div className={'livebox' + (liveActive ? ' active' : '')}>
+                <div className="livebox-head">
+                  <div>
+                    <div className="livebox-title">Live Camera Detection</div>
+                    <div className="livebox-sub">{liveActive ? 'Camera feed is being sampled for CV analysis' : 'Use your webcam for live PPE and hazard detection'}</div>
+                  </div>
+                  <button className={'btn live-toggle ' + (liveActive ? 'stop' : 'start')} onClick={liveActive ? stopLiveDetection : startLiveDetection}>
+                    {liveActive ? 'Stop live' : 'Start live'}
+                  </button>
+                </div>
+                <div className="camframe">
+                  <video ref={videoRef} muted playsInline />
+                  <canvas ref={overlayRef} className="camoverlay" />
+                  {!liveActive && <div className="camempty">Camera preview</div>}
+                  {liveProcessing && <div className="camstatus"><span className="spin" /> Detecting</div>}
+                </div>
+                <canvas ref={canvasRef} style={{ display: 'none' }} />
+                {liveError && (
+                  <div className="notice">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flex: 'none', marginTop: 1 }}><circle cx="12" cy="12" r="9" /><path d="M12 8v5M12 16.5v.01" /></svg>
+                    <span>{liveError}</span>
+                  </div>
+                )}
               </div>
               {notice && (
                 <div className="notice">

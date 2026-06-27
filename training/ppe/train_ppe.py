@@ -1,9 +1,9 @@
 """PPE retraining — accuracy-focused config (run on Colab GPU).
 
-The shipped PPE model (mAP50 0.75+) was trained for only 20 epochs on yolov8s. This
-script raises the ceiling:
+The original baseline (mAP50 0.774) was trained for 20 epochs at 640px on yolov8s. This
+script reproduces the shipped model (yolov8m, mAP50 0.785):
   - Base model yolov8s -> yolov8m
-  - Epochs 20 -> 80 (patience early-stop)
+  - Epochs 20 -> 30, image size 640 -> 768
   - Stronger augmentation (mosaic + mixup + copy_paste + HSV/scale jitter)
 
 Dataset: Roboflow "PPE Combined Model v4" (14 classes), same as the original.
@@ -24,9 +24,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", required=True, help="path to Roboflow PPE data.yaml")
     parser.add_argument("--model", default="yolov8m.pt", help="base weights")
-    parser.add_argument("--epochs", type=int, default=80)
+    parser.add_argument("--epochs", type=int, default=30)
     parser.add_argument("--batch", type=int, default=16)
-    parser.add_argument("--imgsz", type=int, default=640)
+    parser.add_argument("--imgsz", type=int, default=768)
     parser.add_argument("--name", default="ppe_v4")
     args = parser.parse_args()
 

@@ -15,6 +15,16 @@ annotated output plus a unified alerts/severity summary, viewed through a built-
 | **Image enhancement** | CLAHE preprocessing improves detection in low-light / dusty / smoky frames | (robustness) |
 | **Binary morphological operations** | Opening/closing cleans the fire/smoke masks | (segmentation) |
 
+## Sample outputs
+
+One upload runs every capability and produces one annotated result. Examples across the three
+hazard pillars:
+
+| PPE + pose | Fall detection | Fire + severity |
+|---|---|---|
+| ![Worker without safety vest detected](outputs/detected_Construction_no_safety.jpg) | ![Fall hazard detected](outputs/worker-falling-2-annotated.jpg) | ![Fire detected](outputs/detected_fire_industrial.jpeg) |
+| `NO-Safety Vest` flagged on workers, with pose skeletons overlaid | Fall hazard inferred from pose keypoints (wide box / horizontal torso) | Fire boxes plus HSV severity masks painted on the flames |
+
 ## Structure
 
 ```
@@ -67,7 +77,8 @@ you want to rebuild the UI — the React dashboard ships pre-built in `frontend/
   internet once.
 - Try the bundled samples in [uploads/](uploads/) — e.g.
   `Construction_no_safety.jpg` (image) or `Construction_video_test.mp4` (video).
-- No GPU is required; a GPU only speeds up video processing.
+- The app runs on CPU, but **a GPU is needed for real-time (10+ FPS) video** — see
+  [Performance](#performance) below.
 
 ### Rebuilding the frontend (optional — only to change the UI)
 
@@ -92,6 +103,28 @@ Video is processed every Nth frame and downscaled (see `VIDEO_STRIDE` / `VIDEO_M
 in [services/config.py](services/config.py)) to keep CPU inference and the output file
 practical — 4K every-frame on CPU is too slow for an interactive demo.
 
+## Performance
+
+The full pipeline runs **three YOLOv8 models per frame** (PPE, fire/smoke, pose) plus CLAHE,
+HSV segmentation, morphology, and annotation. End-to-end latency was measured on
+`uploads/Construction_no_safety.jpg`, mean of 10 runs after a warm-up:
+
+| Hardware | Test-time augmentation | Latency / image | FPS |
+|---|---|---|---|
+| Laptop CPU | on | ~753 ms | ~1.3 |
+| Colab GPU (Tesla T4) | on | ~135 ms | ~7.4 |
+| Colab GPU (Tesla T4) | **off** | **~75 ms** | **~13** ✅ |
+
+**The 10 FPS real-time target is met on a GPU with test-time augmentation disabled.** The two
+levers, both in [services/config.py](services/config.py):
+
+- **Hardware** is the dominant factor — moving the same code from CPU to a T4 GPU is a ~6×
+  speed-up (1.3 → 7.4 FPS).
+- **`USE_TTA_IMAGE` / `USE_TTA_VIDEO`** trade accuracy for speed: TTA is ~3× slower, so we
+  keep it on for best-accuracy single-image analysis and turn it off for real-time video.
+
+> For the live demo, run on a GPU. On CPU the pipeline drops back to ~1.3 FPS.
+
 ## Accuracy
 
 Two tracks, both supported:
@@ -106,10 +139,16 @@ Two tracks, both supported:
   Measure with [training/evaluate.py](training/evaluate.py) and drop new `best.pt` files
   into `models/` — the backend loads whatever weights are there, no code change needed.
 
-| Model | Classes | Baseline mAP50 |
-|---|---|---|
-| `ppe_model.pt` | Hardhat, Vest, Mask, Gloves, Goggles, Fall-Detected (+ NO- variants) | 0.75+ |
-| `firesmoke_model.pt` | fire, smoke | 0.763 (smoke 0.667 — the retraining target) |
+| Model | Classes | Baseline mAP50 | Deployed mAP50 |
+|---|---|---|---|
+| `ppe_model.pt` | Hardhat, Vest, Mask, Gloves, Goggles, Fall-Detected (+ NO- variants) | 0.774 (yolov8s) | **0.785** — yolov8m, 768px |
+| `firesmoke_model.pt` | fire, smoke | 0.763 (smoke 0.667) | **0.820 (smoke 0.801)** — yolov8m, merged data |
+
+PPE improved with the yolov8m retrain (mAP50 0.774 → 0.785, same Roboflow v4 val set — a fair
+comparison). Smoke was the fire/smoke weak class; the merged-data retrain lifted smoke mAP50 from
+**0.667 → 0.801** (provisional — different val sets). Full per-class numbers in
+[training/ppe/README.md](training/ppe/README.md) and
+[training/firesmoke/README.md](training/firesmoke/README.md).
 
 Dataset sources and full metrics are in `training/ppe/README.md` and
 `training/firesmoke/README.md`.

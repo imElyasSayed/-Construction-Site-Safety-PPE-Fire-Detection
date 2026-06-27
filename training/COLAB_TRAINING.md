@@ -32,7 +32,7 @@ print("PPE data.yaml:", dataset.location + "/data.yaml")
 ```
 
 ```python
-# Train (uses the upgraded config: yolov8m, 80 epochs, stronger augmentation)
+# Train (deployed config: yolov8m, 768px, 30 epochs, stronger augmentation)
 !python train_ppe.py --data {dataset.location}/data.yaml
 ```
 
@@ -70,8 +70,8 @@ template — its `path:` currently points at a Windows folder, so use the downlo
 !python evaluate.py --weights runs/detect/fire_smoke_v3/weights/best.pt --data /content/firesmoke/data.yaml
 ```
 
-Compare `mAP50` / per-class numbers against the baselines (PPE 0.75, fire 0.859,
-smoke 0.667). The confusion matrices / PR curves land in `runs/detect/<name>/` — copy the
+Compare `mAP50` / per-class numbers against the baselines (PPE 0.774, fire 0.859,
+smoke 0.667; deployed: PPE 0.785, fire/smoke overall 0.820, smoke 0.801). The confusion matrices / PR curves land in `runs/detect/<name>/` — copy the
 good ones into `docs/` for the report.
 
 ---

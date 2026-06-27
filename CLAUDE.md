@@ -71,7 +71,7 @@ cd frontend && npm run build      # regenerates frontend/dist (which main.py ser
 
 | Model | File | Classes | Status |
 |---|---|---|---|
-| PPE | `models/ppe_model.pt` | 14 (Hardhat, Vest, Mask, Gloves, Goggles, +`NO-` variants, Person, Ladder, Cone, Fall) | yolov8s baseline mAP50 ~0.75; retraining to yolov8m |
+| PPE | `models/ppe_model.pt` | 14 (Hardhat, Vest, Mask, Gloves, Goggles, +`NO-` variants, Person, Ladder, Cone, Fall) | **yolov8m, mAP50 0.774 -> 0.785** (768px, 30ep; same Roboflow v4 val set) |
 | Fire/smoke | `models/firesmoke_model.pt` | fire, smoke | yolov8m, **smoke mAP50 0.667 -> 0.801** after merged-data retrain |
 
 Backend loads whatever weights are in `models/` — drop a new `best.pt` in (named

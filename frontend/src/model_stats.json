@@ -3,24 +3,24 @@
     "title": "Fire / Smoke",
     "status": "final",
     "fair": false,
-    "old": { "label": "Baseline (yolov8m)" },
-    "new": { "label": "Fine-tuned (merged data)" },
-    "footnote": "Baseline mAP50 measured on the original validation set; fine-tuned on the merged cubeai + sayedgamal99 set — different yardsticks, so this is a provisional comparison. Run the same-val-set eval (notebook cell 5) for the airtight numbers. Baseline only has mAP50 recorded (others n/a).",
+    "old": { "label": "Baseline (yolov8s, 50ep)" },
+    "new": { "label": "Fine-tuned (yolov8m, merged)" },
+    "footnote": "Deployed model: yolov8m, 768px, 40 epochs on the merged cubeai + sayedgamal99 set. Baseline mAP50 was measured on the original cubeai val set and the fine-tuned model on the merged val set — different yardsticks, so this is a provisional comparison. Baseline only has mAP50 recorded (others n/a).",
     "rows": [
-      { "name": "Overall", "metrics": { "mAP50": [0.763, 0.820], "mAP50-95": [null, 0.499], "Precision": [null, 0.846], "Recall": [null, 0.768] } },
+      { "name": "Overall", "metrics": { "mAP50": [0.763, 0.820], "mAP50-95": [null, 0.499], "Precision": [null, 0.845], "Recall": [null, 0.769] } },
       { "name": "Fire",    "metrics": { "mAP50": [0.859, 0.839], "mAP50-95": [null, 0.510], "Precision": [null, 0.863], "Recall": [null, 0.775] } },
       { "name": "Smoke",   "metrics": { "mAP50": [0.667, 0.801], "mAP50-95": [null, 0.488], "Precision": [null, 0.830], "Recall": [null, 0.761] } }
     ]
   },
   "ppe": {
     "title": "PPE",
-    "status": "pending",
+    "status": "final",
     "fair": true,
     "old": { "label": "Baseline (yolov8s, 20ep)" },
-    "new": { "label": "Fine-tuned (yolov8m)" },
-    "footnote": "Fine-tuned numbers pending — retrain in progress. Both models evaluate on the same Roboflow v4 validation set, so once the new numbers land this is a direct, valid comparison. Baseline values are overall-only and approximate.",
+    "new": { "label": "Fine-tuned (yolov8m, 30ep)" },
+    "footnote": "Both models evaluate on the same Roboflow PPE Combined v4 validation set (8,814 images), so this is a direct, valid comparison. The yolov8m retrain at 768px lifted mAP50 0.774 -> 0.785 and mAP50-95 0.501 -> 0.518, mainly via higher recall (0.815 -> 0.837).",
     "rows": [
-      { "name": "Overall", "metrics": { "mAP50": [0.750, null], "mAP50-95": [0.500, null], "Precision": [0.800, null], "Recall": [0.760, null] } }
+      { "name": "Overall", "metrics": { "mAP50": [0.774, 0.785], "mAP50-95": [0.501, 0.518], "Precision": [0.714, 0.712], "Recall": [0.815, 0.837] } }
     ]
   }
 }

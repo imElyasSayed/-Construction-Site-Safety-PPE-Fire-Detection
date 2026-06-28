@@ -1,8 +1,9 @@
 """Fire/smoke retraining — accuracy-focused config (run on Colab GPU).
 
-Changes vs. the original 0.763 mAP50 baseline, aimed at the weak smoke class (0.667):
+Reproduces the shipped model (mAP50 0.820, smoke 0.667 -> 0.801) vs the 0.763 baseline,
+aimed at the weak smoke class:
   - Base model yolov8s -> yolov8m  (more capacity)
-  - Epochs 50 -> 80                (with patience early-stop)
+  - Epochs 50 -> 40, image size 640 -> 768
   - Stronger augmentation          (mosaic + mixup + copy_paste + wider HSV/scale)
     Smoke is diffuse and greyish, so heavier colour/scale jitter + copy_paste helps
     the model generalise instead of memorising a few smoke shapes.
@@ -24,9 +25,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data", default="data.yaml", help="dataset config")
     parser.add_argument("--model", default="yolov8m.pt", help="base weights")
-    parser.add_argument("--epochs", type=int, default=80)
+    parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--batch", type=int, default=16)
-    parser.add_argument("--imgsz", type=int, default=640)
+    parser.add_argument("--imgsz", type=int, default=768)
     parser.add_argument("--name", default="fire_smoke_v3")
     args = parser.parse_args()
 

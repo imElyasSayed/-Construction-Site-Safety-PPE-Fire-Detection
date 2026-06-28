@@ -12,6 +12,7 @@ Video:  same per frame, but PPE runs through ByteTrack; per-worker violations an
 import os
 
 import cv2
+import numpy as np
 
 from services import (
     enhancement,
@@ -176,12 +177,65 @@ def analyze_live_frame(frame):
 
 
 # ----------------------------------------------------------------------------- video
+class _FFmpegWriter:
+    """Frame writer backed by imageio-ffmpeg's bundled ffmpeg (real libx264)."""
+
+    def __init__(self, gen):
+        self._gen = gen
+
+    def write(self, frame):
+        # frame is a contiguous BGR uint8 array (pix_fmt_in="bgr24").
+        self._gen.send(frame.tobytes())
+
+    def release(self):
+        try:
+            self._gen.close()
+        except Exception:
+            pass
+
+
+class _Cv2Writer:
+    """Thin adapter so the OpenCV fallback matches the _FFmpegWriter interface."""
+
+    def __init__(self, writer):
+        self._writer = writer
+
+    def write(self, frame):
+        self._writer.write(frame)
+
+    def release(self):
+        self._writer.release()
+
+
 def _open_writer(path, fps, size):
-    for codec in ("avc1", "mp4v"):
-        writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*codec), fps, size)
-        if writer.isOpened():
-            return writer
-    return None
+    """Open a browser-playable H.264 writer; return ``(writer, playable)``.
+
+    The pip OpenCV wheels (incl. opencv-python-headless used here) ship without an
+    H.264 encoder, so cv2's ``avc1`` silently falls back to ``mp4v`` — FourCC ``FMP4``,
+    MPEG-4 Part 2 — which no browser can decode in a <video> tag (the annotated clip
+    shows up blank). imageio-ffmpeg bundles a real ffmpeg, so when it's available we
+    encode libx264 / yuv420p / +faststart (universally web-playable) and only fall back
+    to cv2 if it's missing. ``playable`` is only True when we know the output is H.264.
+    """
+    w, h = size
+    try:
+        import imageio_ffmpeg
+
+        gen = imageio_ffmpeg.write_frames(
+            path, (w, h), fps=fps, codec="libx264",
+            pix_fmt_in="bgr24", pix_fmt_out="yuv420p",
+            macro_block_size=1,
+            output_params=["-movflags", "+faststart", "-preset", "veryfast"],
+        )
+        gen.send(None)  # seed the generator (sends ffmpeg the header/args)
+        return _FFmpegWriter(gen), True
+    except Exception:
+        for codec in ("avc1", "mp4v"):
+            writer = cv2.VideoWriter(path, cv2.VideoWriter_fourcc(*codec), fps, size)
+            if writer.isOpened():
+                # Only avc1 is genuinely browser-playable; mp4v (FMP4) is not.
+                return _Cv2Writer(writer), codec == "avc1"
+        return None, False
 
 
 def _downscale(frame):
@@ -210,6 +264,8 @@ def analyze_video(video_path):
     best_score = -1
     best_frame = None
     writer = None
+    writer_playable = False
+    out_w = out_h = None
     frame_index = 0
     processed = 0
 
@@ -225,7 +281,9 @@ def analyze_video(video_path):
         frame = _downscale(frame)
         if writer is None:
             h, w = frame.shape[:2]
-            writer = _open_writer(output_path, out_fps, (w, h))
+            # libx264 + yuv420p requires even dimensions; lock the output size to even.
+            out_w, out_h = w - (w % 2), h - (h % 2)
+            writer, writer_playable = _open_writer(output_path, out_fps, (out_w, out_h))
 
         enhanced = enhancement.enhance(frame)
         tracked = ppe_detector.track(enhanced)
@@ -247,7 +305,9 @@ def analyze_video(video_path):
 
         annotated = _compose(frame, tracked, firesmoke, seg, persons, alert_info, show_ids=True)
         if writer is not None:
-            writer.write(annotated)
+            # Crop to the locked even size and ensure C-contiguity for the encoder.
+            frame_out = annotated[:out_h, :out_w]
+            writer.write(np.ascontiguousarray(frame_out))
 
         # keep the most hazardous frame as a representative snapshot
         score = {"ok": 0, "warning": 1, "critical": 2}[alert_info["level"]] * 100 + len(alert_info["alerts"])
@@ -277,6 +337,6 @@ def analyze_video(video_path):
         "level": level,
         "output_video": output_path,
         "keyframe": keyframe_path if best_frame is not None else None,
-        "video_playable": writer is not None,
+        "video_playable": writer_playable,
     }
     return result, output_path, (keyframe_path if best_frame is not None else None)
